@@ -172,7 +172,7 @@ class Engine:
                 self.client.chat.completions.create(**kwargs), timeout
             )
         except openai.APIError as exc:
-            if not self.send_effort and "reasoning_effort" in str(exc):
+            if self.send_effort and "reasoning_effort" in str(exc):
                 self.send_effort = False
                 return await self.chat(messages, tools, deadline_sec, tool_choice)
             if CONTEXT_FULL.search(str(exc)):
@@ -312,8 +312,16 @@ class Engine:
         return head or self.session.final_message or ""
 
     async def _recover(self, exc) -> bool:
-        """Backs off and returns True when the same call may be retried."""
+        """Backs off and returns True when the same call may be retried.
+
+        A 4xx other than a rate limit means the request itself is wrong; retrying
+        it would burn the task's clock, so the caller raises instead.
+        """
+        status = getattr(exc, "status_code", None)
+        if status in (400, 401, 403, 404, 405, 422):
+            return False
         wait = RETRY_WAITS[min(self.calls, len(RETRY_WAITS) - 1)]
+        await self.session.log(f"[retry] {status or type(exc).__name__} in {wait}s")
         await asyncio.sleep(wait)
         return True
 

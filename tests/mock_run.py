@@ -17,6 +17,8 @@ import asyncio
 import base64
 import json
 import os
+import threading
+from http.server import ThreadingHTTPServer
 import shutil
 import socket
 import subprocess
@@ -29,7 +31,13 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 
+import urllib.request  # noqa: E402
+
+import threading
+from http.server import ThreadingHTTPServer  # noqa: E402
+
 import stub_model  # noqa: E402
+import test_mcp  # noqa: E402
 import websockets  # noqa: E402
 
 TASK = """# Recompute the total
@@ -56,7 +64,7 @@ def prepare(workdir: str) -> None:
         fh.write("a,b\nfirst,20\nsecond,22\n")
 
 
-async def play(ws, workdir: str) -> dict:
+async def play(ws, workdir: str, mcp_url: str | None = None) -> dict:
     """Acts as the evaluator for one task."""
     await ws.send(
         json.dumps(
@@ -72,7 +80,7 @@ async def play(ws, workdir: str) -> dict:
                     "max_output_bytes": 100000,
                     "max_write_bytes": 10000000,
                 },
-                "mcp_servers": [],
+                "mcp_servers": ([{"name": "apps", "url": mcp_url}] if mcp_url else []),
             }
         )
     )
@@ -125,6 +133,21 @@ async def play(ws, workdir: str) -> dict:
                     "truncated": False,
                     "timed_out": False,
                 }
+            elif kind == "http":
+                req = urllib.request.Request(
+                    msg["url"], data=base64.b64decode(msg.get("body_b64") or b""),
+                    headers=msg.get("headers") or {}, method=msg.get("method") or "POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        data = resp.read()
+                        reply = {
+                            "type": "result", "id": rid, "ok": True,
+                            "status": resp.status, "headers": dict(resp.headers),
+                            "body_b64": base64.b64encode(data).decode(), "truncated": False,
+                        }
+                except Exception as exc:
+                    reply = {"type": "result", "id": rid, "ok": False, "error": str(exc)}
             elif kind in ("read_file", "write_file"):
                 local = (path or "").replace("/app/", os.path.join(workdir, "app") + "/")
                 if kind == "read_file":
@@ -159,10 +182,17 @@ async def play(ws, workdir: str) -> dict:
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", action="store_true", help="keep the task folder")
+    ap.add_argument("--mcp", action="store_true", help="serve a mock MCP app for the task")
     args = ap.parse_args()
 
     workdir = tempfile.mkdtemp(prefix="m2-task-")
     prepare(workdir)
+    mcp_url = None
+    mcp_server = None
+    if args.mcp:
+        mcp_server = ThreadingHTTPServer(("127.0.0.1", 0), test_mcp.MCP)
+        threading.Thread(target=mcp_server.serve_forever, daemon=True).start()
+        mcp_url = f"http://127.0.0.1:{mcp_server.server_address[1]}/mcp/"
     model_port = free_port()
     stub_model.serve(model_port)
     port = free_port()
@@ -197,7 +227,7 @@ async def main() -> int:
         print((proc.communicate()[0] or "")[-3000:])
         raise SystemExit("server never listened")
     async with ws:
-        result = await asyncio.wait_for(play(ws, workdir), timeout=600)
+        result = await asyncio.wait_for(play(ws, workdir, mcp_url), timeout=600)
     proc.terminate()
     try:
         out = proc.communicate(timeout=10)[0]
@@ -219,6 +249,16 @@ async def main() -> int:
     print((done.get("final_message") or done.get("error") or "(none)")[:1200])
     if not args.keep:
         shutil.rmtree(workdir, ignore_errors=True)
+    tools = {}
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{model_port}/last", timeout=10) as resp:
+            tools = json.loads(resp.read())
+    except Exception:
+        pass
+    if args.mcp:
+        names = tools.get("tools") or []
+        print("== tools sent to the model ==", names)
+        assert any("spreadsheet_read_range" in (n or "") for n in names), names
     passed = bool(ok and done.get("final_message") and "answer.txt" in done["final_message"])
     print("RESULT:", "PASS" if passed else "FAIL")
     return 0 if passed else 1

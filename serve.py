@@ -213,8 +213,7 @@ class Harness:
         self.contract = contract.parse_contract(s.instruction, s.workdir)
         contract_text = json.dumps(self.contract, indent=2, ensure_ascii=False)
         await s.log(f"[intake] contract paths={[c['path'] for c in self.contract]}")
-        await self.mcp.start(s.instruction)
-        self.mcp_tools = list(self.mcp_tools)  # already registered by start()
+        self.mcp_tools = await self.mcp.start(s.instruction)
 
         header = (
             f"## Task\n{s.instruction}\n\n"

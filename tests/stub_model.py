@@ -20,7 +20,7 @@ import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-STATE = {"worker_turns": 0, "verifier_turns": 0, "requests": 0}
+STATE = {"worker_turns": 0, "verifier_turns": 0, "requests": 0, "tools": []}
 
 
 def reply(content: str | None, tool_calls=None, finish="stop") -> dict:
@@ -46,7 +46,9 @@ def call(name: str, args: dict) -> dict:
     }
 
 
-def decide(messages: list[dict]) -> dict:
+def decide(messages: list[dict], tools: list[dict] | None = None) -> dict:
+    seen = {t.get("function", {}).get("name") for t in (tools or [])}
+    STATE["tools"] = sorted(set(STATE["tools"]) | {n for n in seen if n})
     STATE["requests"] += 1
     system = messages[0].get("content") or ""
     last = messages[-1]
@@ -110,13 +112,24 @@ def decide(messages: list[dict]) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):  # noqa: N802
+        if self.path.rstrip("/").endswith("/last"):
+            data = json.dumps({"tools": STATE["tools"]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        else:
+            self.send_error(404)
+
     def do_POST(self):  # noqa: N802
         length = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(length) or b"{}")
         if not self.path.endswith("/chat/completions"):
             self.send_error(404)
             return
-        payload = decide(body.get("messages") or [])
+        payload = decide(body.get("messages") or [], body.get("tools"))
         data = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
