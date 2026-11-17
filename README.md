@@ -75,8 +75,9 @@ uv run python eval/run.py ../measured-twice --env-file local.env
 Tests that need no Docker:
 
 ```bash
-python tests/mock_run.py     # protocol end-to-end: stub model + mock evaluator
-python tests/test_mcp.py     # MCP discovery, selection, calls
+python tests/mock_run.py         # protocol end-to-end: stub model + mock evaluator
+python tests/mock_run.py --mcp   # same, with a mock MCP app served to the task
+python tests/test_mcp.py         # MCP discovery, query selection, tool calls
 ```
 
 ## Submission state
