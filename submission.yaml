@@ -1,0 +1,9 @@
+name: measured-twice
+model_api: google-cloud/claude-opus-5-5
+install: >-
+  uv venv --python 3.12 /opt/harness/venv
+  && uv pip install --python /opt/harness/venv/bin/python -r {src}/requirements.txt
+serve: /opt/harness/venv/bin/python {src}/serve.py
+env:
+  MAX_OUTPUT_TOKENS: "32000"
+  RESULT_CHARS: "16000"

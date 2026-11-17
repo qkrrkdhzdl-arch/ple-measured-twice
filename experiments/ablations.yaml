@@ -1,0 +1,67 @@
+# Ablation and model configs. Each id becomes an env block for
+#   uv run python eval/run.py ../measured-twice --env-file experiments/<id>.env
+# and a row in experiments/scoreboard.csv.
+#
+# Stage clock shares (fractions of the time left when a stage must stop) and
+# engine knobs are read from the environment by serve.py / engine.py.
+
+runs:
+  - id: baseline-opus
+    model_api: google-cloud/claude-opus-5-5
+    env: {}
+
+  - id: baseline-argon
+    model_api: google-cloud/gemini-4-argon
+    env: {}
+
+  - id: model-flash
+    model_api: google-cloud/gemini-3.8-flash
+    env: {}
+
+  - id: model-glm
+    model_api: google-cloud/glm-5.2
+    env: {REASONING_EFFORT: "high"}
+
+  - id: model-gptoss
+    model_api: google-cloud/gpt-oss-120b
+    env: {REASONING_EFFORT: "high"}
+
+  - id: A1-no-gate
+    model_api: google-cloud/claude-opus-5-5
+    env: {GATE: "off"}
+
+  - id: A2-no-verifier
+    model_api: google-cloud/claude-opus-5-5
+    env: {SKIP_VERIFY: "1"}
+
+  - id: A3-no-survey
+    model_api: google-cloud/claude-opus-5-5
+    env: {SKIP_SURVEY: "1"}
+
+  - id: A4-mcp-all
+    model_api: google-cloud/claude-opus-5-5
+    env: {MCP_LIMIT: "400"}
+
+  - id: A5-clip-4k
+    model_api: google-cloud/claude-opus-5-5
+    env: {RESULT_CHARS: "4000"}
+
+  - id: A5-clip-32k
+    model_api: google-cloud/claude-opus-5-5
+    env: {RESULT_CHARS: "32000"}
+
+  - id: A6-build-40
+    model_api: google-cloud/claude-opus-5-5
+    env: {BUILD_END: "0.40"}
+
+  - id: A6-build-65
+    model_api: google-cloud/claude-opus-5-5
+    env: {BUILD_END: "0.65"}
+
+  - id: A7-effort-high
+    model_api: google-cloud/claude-opus-5-5
+    env: {REASONING_EFFORT: "high"}
+
+  - id: A8-one-fix
+    model_api: google-cloud/claude-opus-5-5
+    env: {MAX_FIX_ROUNDS: "1"}

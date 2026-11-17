@@ -1,0 +1,1 @@
+run_id,date,model,config,score,score_elec,score_mech,score_civil,score_struct,zero_tasks,contract_fail,gate_fix_saved,in_tokens,out_tokens,cached_tokens,cost_usd,wall_sec,calls_per_task,notes
